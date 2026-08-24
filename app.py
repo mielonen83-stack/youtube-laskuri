@@ -182,14 +182,17 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                     else:
                         trendi = "⚖️ Tasainen"
 
+                    v_linkki = f"https://www.youtube.com/watch?v={v['id']}"
+
                     v_info = {
                         "Kanava": nimi,
                         "Otsikko": v["title"],
                         "Julkaisupäivä": str(v["date"]),
                         "Näyttökerrat": v_views,
+                        "Trendi": trendi,
                         "Tuotto ($)": round(v_usd, 2),
                         "Tuotto (€)": round(v_eur, 2),
-                        "Trendi": trendi
+                        "Linkki": v_linkki
                     }
                     video_list.append(v_info)
                     kaikki_videot_data.append(v_info)
@@ -207,20 +210,26 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 
                 if video_list:
                     paras_video = video_list[0]
-                    st.success(f"🏆 **Kanavan hitti:**\n_{paras_video['Otsikko']}_\n({paras_video['Näyttökerrat']:,} näyttöä | ${paras_video['Tuotto ($)']})")
+                    st.success(f"🏆 **Kanavan hitti:**\n[{paras_video['Otsikko']}]({paras_video['Linkki']})\n({paras_video['Näyttökerrat']:,} näyttöä | ${paras_video['Tuotto ($)']})")
                 
                 st.markdown("---")
                 st.markdown(f"🎬 **Löytyneet videot ({len(video_list)} kpl):**")
                 
+                # Näytetään taulukko ilman linkki-saraketta, jotta taulukko pysyy siistinä...
                 df_kanava = pd.DataFrame(video_list)
                 display_df = df_kanava[["Otsikko", "Julkaisupäivä", "Näyttökerrat", "Trendi", "Tuotto ($)", "Tuotto (€)"]]
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
+                
+                # ...ja tehdään alapuolelle klikattava listaus linkeillä, jotta videoihin pääsee suoraan käsiksi!
+                with st.expander(f"🔗 Avaa suorat YouTube-linkit ({nimi})"):
+                    for v in video_list:
+                        st.markdown(f"[{v['Otsikko']}]({v['Linkki']}) — 👁️ {v['Näyttökerrat']:,} näyttöä ({v['Trendi']})")
                 
             else:
                 st.info(f"Ei videoita valitulla aikajaksolla.")
                 
         except Exception as e:
-            st.error(f"Virhe tietojen käsittelyssä: {e}")
+            st.error(f"Virhe tietojen käsittelyssä: {{e}}")
 
 # --- KOKONAISYHTEENVETO JA TAVOITE ---
 if len(kanavat) > 1 and kaikki_nayttokerrat_yhteensa > 0:
