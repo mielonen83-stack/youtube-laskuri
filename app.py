@@ -1,7 +1,7 @@
 import streamlit as st
 import urllib.request
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 # Sivuston ulkoasu
 st.set_page_config(page_title="YouTube Tulolaskuri Pro", page_icon="💰", layout="wide")
@@ -35,7 +35,7 @@ if not kanavat:
         "Toinen kanava": "UC4GkaGiV3vnTUG_PiOfgu7w"
     }
 
-# --- SIVUPALKKI: Asetukset ja Kalenteri ---
+# --- SIVUPALKKI: Asetukset ja Selkeä aikajakso ---
 st.sidebar.header("⚙️ Asetukset")
 cpm_rate = st.sidebar.slider("Tuotto / 1000 näyttökertaa ($ USD)", min_value=0.5, max_value=10.0, value=1.0, step=0.1)
 eur_rate = st.sidebar.number_input("EUR / USD valuuttakurssi", value=0.92, step=0.01)
@@ -43,24 +43,31 @@ eur_rate = st.sidebar.number_input("EUR / USD valuuttakurssi", value=0.92, step=
 st.sidebar.markdown("---")
 st.sidebar.subheader("📅 Tarkastelujakso")
 
+# Selkeä valikko, joka laskee aloituspäivän automaattisesti oikein
 aikajakso_valinta = st.sidebar.selectbox(
-    "Pikavalinta aikajaksolle:",
-    ["Viimeiset 30 päivää", "Viimeiset 90 päivää", "Vuosi 2026", "Koko historia (Kaikki videot)", "Mukautettu (Valitse alta)"]
+    "Valitse ajanjakso:",
+    [
+        "Viimeiset 30 päivää", 
+        "Viimeiset 90 päivää", 
+        "Tämän vuoden alusta (2026)", 
+        "Viimeiset 365 päivää", 
+        "Koko kanavan historia (Kaikki videot)"
+    ]
 )
 
 tanaan = date.today()
 if aikajakso_valinta == "Viimeiset 30 päivää":
-    oletus_alku = tanaan - timedelta(days=30)
+    valittu_alkupaiva = tanaan - timedelta(days=30)
 elif aikajakso_valinta == "Viimeiset 90 päivää":
-    oletus_alku = tanaan - timedelta(days=90)
-elif aikajakso_valinta == "Vuosi 2026":
-    oletus_alku = date(2026, 1, 1)
-elif aikajakso_valinta == "Koko historia (Kaikki videot)":
-    oletus_alku = date(2015, 1, 1)
-else:
-    oletus_alku = date(2026, 1, 1)
+    valittu_alkupaiva = tanaan - timedelta(days=90)
+elif aikajakso_valinta == "Tämän vuoden alusta (2026)":
+    valittu_alkupaiva = date(2026, 1, 1)
+elif aikajakso_valinta == "Viimeiset 365 päivää":
+    valittu_alkupaiva = tanaan - timedelta(days=365)
+else: # Koko historia
+    valittu_alkupaiva = date(2010, 1, 1)
 
-valittu_alkupaiva = st.sidebar.date_input("Aloituspäivä", oletus_alku)
+st.sidebar.info(f"Lasketaan videoita alkaen: **{valittu_alkupaiva}**")
 
 st.markdown("---")
 
@@ -95,16 +102,15 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
             yt_nimi = snippet["title"]
             
             st.caption(f"YouTube-nimi: **{yt_nimi}**")
-            st.write(f"Lasketaan videot alkaen: `{valittu_alkupaiva}`")
             
-            # 2. Haetaan soittolistan videot turvallisesti
+            # 2. Haetaan soittolistan videot (haetaan vaikka 50 tuoreinta)
             playlist_url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={uploads_playlist_id}&maxResults=50&key={api_key}"
             
             try:
                 with urllib.request.urlopen(playlist_url) as pl_response:
                     pl_data = json.loads(pl_response.read().decode())
             except Exception:
-                st.info("Kanavalla ei ole julkisia videoita tai soittolistan haku epäonnistui.")
+                st.info("Kanavalla ei ole julkisia videoita tai haku epäonnistui.")
                 continue
                 
             video_list = []
@@ -118,6 +124,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 if vid and v_published_at:
                     try:
                         v_date = datetime.strptime(v_published_at[:10], "%Y-%m-%d").date()
+                        # Suodatetaan valitun päivän mukaan
                         if v_date >= valittu_alkupaiva:
                             video_list.append({"id": vid, "title": vtitle, "date": v_date})
                     except Exception:
@@ -149,7 +156,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 col_e.metric("Tuotot (EUR)", f"~{jakso_eur:,.2f} €")
                 
                 st.markdown("---")
-                st.markdown(f"🎬 **Jaksolta löytyneet videot ({len(video_list)} kpl):**")
+                st.markdown(f"🎬 **Löytyneet videot ({len(video_list)} kpl):**")
                 
                 with st.expander(f"Näytä videot ({nimi})"):
                     for v in video_list:
@@ -160,7 +167,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                         st.caption(f"📅 {v['date']} | 👁️ {v_views:,} näyttöä | 💵 ${v_usd:.2f}")
                         st.markdown("---")
             else:
-                st.info(f"Ei videoita valitun päivämäärän jälkeen.")
+                st.info(f"Ei videoita valitulla aikajaksolla.")
                 
         except Exception as e:
             st.error(f"Virhe tietojen käsittelyssä: {e}")
