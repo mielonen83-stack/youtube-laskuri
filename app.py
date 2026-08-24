@@ -42,6 +42,10 @@ cpm_rate = st.sidebar.slider("Tuotto / 1000 näyttökertaa ($ USD)", min_value=0
 eur_rate = st.sidebar.number_input("EUR / USD valuuttakurssi", value=0.92, step=0.01)
 
 st.sidebar.markdown("---")
+st.sidebar.subheader("🎯 Tuottotavoite")
+tavoite_usd = st.sidebar.number_input("Aseta tavoite ($ USD)", min_value=100, max_value=100000, value=1000, step=100)
+
+st.sidebar.markdown("---")
 st.sidebar.subheader("📅 Tarkastelujakso")
 
 aikajakso_valinta = st.sidebar.selectbox(
@@ -152,7 +156,6 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                     v_views = int(v_item.get("statistics", {}).get("viewCount", 0))
                     haetut_tiedot[v_id] = v_views
                 
-                # Lasketaan keskiarvo päiväkohtaiselle suosiolle trendin määrittelyä varten
                 paiva_kohtaiset_keskiarvot = []
                 temp_calc = []
                 for v in raw_videos:
@@ -172,10 +175,6 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                     ajanjakson_nayttokerrat += v_views
                     kaikki_nayttokerrat_yhteensa += v_views
                     
-                    # Määritellään trendi
-                    # Jos päivätahti on yli 1.5x kanavan keskiarvon -> Nousussa
-                    # Jos alle puolet keskiarvosta -> Hiljainen / Laskussa
-                    # Muuten -> Tasainen
                     if vpaiva > keskiarvo_tahti * 1.5:
                         trendi = "🚀 Nousussa"
                     elif vpaiva < keskiarvo_tahti * 0.5:
@@ -223,7 +222,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
         except Exception as e:
             st.error(f"Virhe tietojen käsittelyssä: {e}")
 
-# --- KOKONAISYHTEENVETO KAIKISTA KANAVISTA ---
+# --- KOKONAISYHTEENVETO JA TAVOITE ---
 if len(kanavat) > 1 and kaikki_nayttokerrat_yhteensa > 0:
     st.markdown("---")
     st.header("🌐 Kaikkien kanavien kokonaissaldo yhteensä")
@@ -236,17 +235,28 @@ if len(kanavat) > 1 and kaikki_nayttokerrat_yhteensa > 0:
     col_tot2.metric("Kokonistuotot (USD)", f"${kokonais_usd:,.2f}")
     col_tot3.metric("Kokonistuotot (EUR)", f"~{kokonais_eur:,.2f} €")
 
-# --- LATAUSPAINIKE JA KAAVIO ---
+# --- TUOTTOTAVOITTEEN SEURANTA ---
 if kaikki_videot_data:
     st.markdown("---")
-    st.subheader("📈 Visuaalinen katsaus ja vienti")
+    st.header("🎯 Tuottotavoitteen seurunta")
     
+    nykyiset_tuotot = (kaikki_nayttokerrat_yhteensa / 1000) * cpm_rate
+    prosentti = min(int((nykyiset_tuotot / tavoite_usd) * 100), 100)
+    
+    st.write(f"Asetettu tavoite: **${tavoite_usd:,.0f}** | Nykyinen tuotto: **${nykyiset_tuotot:,.2f}** ({prosentti}% saavutettu)")
+    st.progress(prosentti / 100.0)
+    
+    if nykyiset_tuotot >= tavoite_usd:
+        st.success("🎉 Onneksi olkoon! Olet saavuttanut asettamasi tuottotavoitteen tällä aikajaksolla!")
+    else:
+        puuttuu_usd = tavoite_usd - nykyiset_tuotot
+        puuttuu_nayttoja = int((puuttuu_usd / cpm_rate) * 1000)
+        st.info(f"💡 Tavoitteesta puuttuu vielä **${puuttuu_usd:,.2f}**. Se vaatii noin **{puuttuu_nayttoja:,}** uutta näyttökertaa.")
+
+# --- LATAUSPAINIKE ---
+if kaikki_videot_data:
+    st.markdown("---")
     df_kaikki = pd.DataFrame(kaikki_videot_data)
-    
-    st.markdown("**Top-videot näyttökertojen mukaan:**")
-    chart_data = df_kaikki.set_index("Otsikko")["Näyttökerrat"].head(10)
-    st.bar_chart(chart_data)
-    
     csv = df_kaikki.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Lataa kaikki tiedot CSV-tiedostona (Exceliin)",
