@@ -35,7 +35,7 @@ if not kanavat:
         "Toinen kanava": "UC4GkaGiV3vnTUG_PiOfgu7w"
     }
 
-# --- SIVUPALKKI: Asetukset ja Selkeä aikajakso ---
+# --- SIVUPALKKI: Asetukset ja Ajanjakso ---
 st.sidebar.header("⚙️ Asetukset")
 cpm_rate = st.sidebar.slider("Tuotto / 1000 näyttökertaa ($ USD)", min_value=0.5, max_value=10.0, value=1.0, step=0.1)
 eur_rate = st.sidebar.number_input("EUR / USD valuuttakurssi", value=0.92, step=0.01)
@@ -43,31 +43,41 @@ eur_rate = st.sidebar.number_input("EUR / USD valuuttakurssi", value=0.92, step=
 st.sidebar.markdown("---")
 st.sidebar.subheader("📅 Tarkastelujakso")
 
-# Selkeä valikko, joka laskee aloituspäivän automaattisesti oikein
 aikajakso_valinta = st.sidebar.selectbox(
     "Valitse ajanjakso:",
     [
         "Viimeiset 30 päivää", 
         "Viimeiset 90 päivää", 
-        "Tämän vuoden alusta (2026)", 
-        "Viimeiset 365 päivää", 
-        "Koko kanavan historia (Kaikki videot)"
+        "Tämän vuoden alusta", 
+        "Koko historia (Kaikki videot)",
+        "Valitse vapaa kalenteriväli (Alku- ja loppupäivä)"
     ]
 )
 
 tanaan = date.today()
+
+# Määritellään alkupäivä ja loppupäivä valinnan mukaan
 if aikajakso_valinta == "Viimeiset 30 päivää":
     valittu_alkupaiva = tanaan - timedelta(days=30)
+    valittu_loppupaiva = tanaan
 elif aikajakso_valinta == "Viimeiset 90 päivää":
     valittu_alkupaiva = tanaan - timedelta(days=90)
-elif aikajakso_valinta == "Tämän vuoden alusta (2026)":
-    valittu_alkupaiva = date(2026, 1, 1)
-elif aikajakso_valinta == "Viimeiset 365 päivää":
-    valittu_alkupaiva = tanaan - timedelta(days=365)
-else: # Koko historia
+    valittu_loppupaiva = tanaan
+elif aikajakso_valinta == "Tämän vuoden alusta":
+    valittu_alkupaiva = date(tanaan.year, 1, 1)
+    valittu_loppupaiva = tanaan
+elif aikajakso_valinta == "Koko historia (Kaikki videot)":
     valittu_alkupaiva = date(2010, 1, 1)
+    valittu_loppupaiva = tanaan
+else:
+    # Vapaa kalenterivalintaväli
+    col_a, col_l = st.sidebar.columns(2)
+    with col_a:
+        valittu_alkupaiva = st.date_input("Alkupäivä", tanaan - timedelta(days=30))
+    with col_l:
+        valittu_loppupaiva = st.date_input("Loppupäivä", tanaan)
 
-st.sidebar.info(f"Lasketaan videoita alkaen: **{valittu_alkupaiva}**")
+st.sidebar.info(f"Ajanjakso: **{valittu_alkupaiva}** – **{valittu_loppupaiva}**")
 
 st.markdown("---")
 
@@ -79,7 +89,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
         st.markdown(f"### 📊 {nimi}")
         
         if not channel_id or channel_id == "UCxxxxxxxxxxxxxx":
-            st.warning(f"Kanavan ID puuttuu tai on oletusarvona asetuksista.")
+            st.warning("Kanavan ID puuttuu tai on oletusarvona asetuksista.")
             continue
             
         try:
@@ -103,7 +113,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
             
             st.caption(f"YouTube-nimi: **{yt_nimi}**")
             
-            # 2. Haetaan soittolistan videot (haetaan vaikka 50 tuoreinta)
+            # 2. Haetaan soittolistan videot
             playlist_url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={uploads_playlist_id}&maxResults=50&key={api_key}"
             
             try:
@@ -124,8 +134,8 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 if vid and v_published_at:
                     try:
                         v_date = datetime.strptime(v_published_at[:10], "%Y-%m-%d").date()
-                        # Suodatetaan valitun päivän mukaan
-                        if v_date >= valittu_alkupaiva:
+                        # Tarkistetaan että video osuu valitulle aikavälille (alkupäivä <= julkaisupäivä <= loppupäivä)
+                        if valittu_alkupaiva <= v_date <= valittu_loppupaiva:
                             video_list.append({"id": vid, "title": vtitle, "date": v_date})
                     except Exception:
                         continue
