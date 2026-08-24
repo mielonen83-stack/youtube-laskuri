@@ -43,7 +43,14 @@ eur_rate = st.sidebar.number_input("EUR / USD valuuttakurssi", value=0.92, step=
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎯 Tuottotavoite")
-tavoite_usd = st.sidebar.number_input("Aseta tavoite ($ USD)", min_value=100, max_value=100000, value=1000, step=100)
+valuutta_valinta = st.sidebar.radio("Tavoitteen valuutta:", ["EUR (€)", "USD ($)"], horizontal=True)
+
+if valuutta_valinta == "EUR (€)":
+    tavoite_eur = st.sidebar.number_input("Aseta tavoite (€ EUR)", min_value=100, max_value=100000, value=1000, step=100)
+    tavoite_usd = tavoite_eur / eur_rate
+else:
+    tavoite_usd = st.sidebar.number_input("Aseta tavoite ($ USD)", min_value=100, max_value=100000, value=1000, step=100)
+    tavoite_eur = tavoite_usd * eur_rate
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📅 Tarkastelujakso")
@@ -210,17 +217,15 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 
                 if video_list:
                     paras_video = video_list[0]
-                    st.success(f"🏆 **Kanavan hitti:**\n[{paras_video['Otsikko']}]({paras_video['Linkki']})\n({paras_video['Näyttökerrat']:,} näyttöä | ${paras_video['Tuotto ($)']})")
+                    st.success(f"🏆 **Kanavan hitti:**\n[{paras_video['Otsikko']}]({paras_video['Linkki']})\n({paras_video['Näyttökerrat']:,} näyttöä | ~{paras_video['Tuotto (€)']:,} €)")
                 
                 st.markdown("---")
                 st.markdown(f"🎬 **Löytyneet videot ({len(video_list)} kpl):**")
                 
-                # Näytetään taulukko ilman linkki-saraketta, jotta taulukko pysyy siistinä...
                 df_kanava = pd.DataFrame(video_list)
                 display_df = df_kanava[["Otsikko", "Julkaisupäivä", "Näyttökerrat", "Trendi", "Tuotto ($)", "Tuotto (€)"]]
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
                 
-                # ...ja tehdään alapuolelle klikattava listaus linkeillä, jotta videoihin pääsee suoraan käsiksi!
                 with st.expander(f"🔗 Avaa suorat YouTube-linkit ({nimi})"):
                     for v in video_list:
                         st.markdown(f"[{v['Otsikko']}]({v['Linkki']}) — 👁️ {v['Näyttökerrat']:,} näyttöä ({v['Trendi']})")
@@ -229,7 +234,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 st.info(f"Ei videoita valitulla aikajaksolla.")
                 
         except Exception as e:
-            st.error(f"Virhe tietojen käsittelyssä: {{e}}")
+            st.error(f"Virhe tietojen käsittelyssä: {e}")
 
 # --- KOKONAISYHTEENVETO JA TAVOITE ---
 if len(kanavat) > 1 and kaikki_nayttokerrat_yhteensa > 0:
@@ -249,18 +254,39 @@ if kaikki_videot_data:
     st.markdown("---")
     st.header("🎯 Tuottotavoitteen seurunta")
     
-    nykyiset_tuotot = (kaikki_nayttokerrat_yhteensa / 1000) * cpm_rate
-    prosentti = min(int((nykyiset_tuotot / tavoite_usd) * 100), 100)
+    nykyiset_tuotot_usd = (kaikki_nayttokerrat_yhteensa / 1000) * cpm_rate
+    nykyiset_tuotot_eur = nykyiset_tuotot_usd * eur_rate
     
-    st.write(f"Asetettu tavoite: **${tavoite_usd:,.0f}** | Nykyinen tuotto: **${nykyiset_tuotot:,.2f}** ({prosentti}% saavutettu)")
+    prosentti = min(int((nykyiset_tuotot_usd / tavoite_usd) * 100), 100)
+    
+    st.write(f"Asetettu tavoite: **{tavoite_eur:,.2f} €** (${tavoite_usd:,.2f}) | Nykyinen tuotto: **~{nykyiset_tuotot_eur:,.2f} €** (${nykyiset_tuotot_usd:,.2f}) — **{prosentti}% saavutettu**")
     st.progress(prosentti / 100.0)
     
-    if nykyiset_tuotot >= tavoite_usd:
+    if nykyiset_tuotot_usd >= tavoite_usd:
         st.success("🎉 Onneksi olkoon! Olet saavuttanut asettamasi tuottotavoitteen tällä aikajaksolla!")
     else:
-        puuttuu_usd = tavoite_usd - nykyiset_tuotot
+        puuttuu_usd = tavoite_usd - nykyiset_tuotot_usd
+        puuttuu_eur = tavoite_eur - nykyiset_tuotot_eur
         puuttuu_nayttoja = int((puuttuu_usd / cpm_rate) * 1000)
-        st.info(f"💡 Tavoitteesta puuttuu vielä **${puuttuu_usd:,.2f}**. Se vaatii noin **{puuttuu_nayttoja:,}** uutta näyttökertaa.")
+        
+        # Lasketaan virstanpylväitä
+        tuhat_videot = puuttuu_nayttoja / 1000
+        kymppi_videot = puuttuu_nayttoja / 10000
+        satku_videot = puuttuu_nayttoja / 100000
+        
+        # Keskiarvo per video tällä aikajaksolla julkaistuille videoille
+        löytyneiden_maara = len(kaikki_videot_data)
+        keskiarvo_per_video_eur = (puuttuu_eur / löytyneiden_maara) if löytyneiden_maara > 0 else 0
+        keskiarvo_per_video_naytot = int(puuttuu_nayttoja / löytyneiden_maara) if löytyneiden_maara > 0 else 0
+
+        st.info(f"💡 Tavoitteesta puuttuu vielä **~{puuttuu_eur:,.2f} €** (${puuttuu_usd:,.2f}), mikä vaatii noin **{puuttuu_nayttoja:,}** uutta näyttökertaa.")
+        
+        # Havainnollistavat esimerkit
+        st.markdown("##### 📐 Mitä tämä vaatii käytännössä tällä aikajaksolla?")
+        col_v1, col_v2, col_v3 = st.columns(3)
+        col_v1.metric("10k näyttökerran videoita", f"~{kymppi_videot:.1f} kpl")
+        col_v2.metric("1k näyttökerran videoita", f"~{tuhat_videot:.1f} kpl")
+        col_v3.metric("Lisätuottoa / video", f"~{keskiarvo_per_video_eur:,.2f} € / kpl ({löytyneiden_maara} videota)")
 
 # --- LATAUSPAINIKE ---
 if kaikki_videot_data:
