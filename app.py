@@ -7,33 +7,61 @@ from datetime import date
 st.set_page_config(page_title="YouTube Tulolaskuri Pro", page_icon="💰", layout="wide")
 
 st.title("💰 YouTube Tulolaskuri & Analytiikka Pro")
-st.write("Kanavasi näyttökerrat ja arvioidut tulot halutulla aikajaksolla.")
+st.write("Hallitse ja seuraa useamman kanavan näyttökertoja ja tuloja turvallisesti pilvestä.")
 
-# Haetaan avain ja kanava-ID Streamlitin Secrets-piilopaikasta
+# Haetaan API-avain salaisuuksista
 try:
     api_key = st.secrets["YOUTUBE_API_KEY"]
-    channel_id = st.secrets["YOUTUBE_CHANNEL_ID"]
 except Exception:
-    st.error("⚠️ Salaisuuksia (Secrets) ei ole määritetty oikein Streamlit Cloudin asetuksiin! Tarkista asetukset.")
+    st.error("⚠️ API-avainta ei löydy Streamlit Secretsistä! Tarkista asetukset.")
     st.stop()
 
-# --- SIVUPALKKI: Asetukset ja Ajajakso ---
-st.sidebar.header("⚙️ Asetukset")
+# Haetaan kanavat Secretsistä (tuetaan [channels] -osiota)
+try:
+    channels_dict = st.secrets["channels"]
+    # Muotoillaan ne siistiin muotoon: {"Pääkanava": "UC...", "Toinen kanava": "UC..."}
+    kanavat = {}
+    # Koska Secrets antaa avaimet satunnaisessa järjestyksessä, poimitaan ne pareittain
+    # Oletetaan muoto: kanava1_nimi, kanava1_id, kanava2_nimi, kanava2_id jne.
+    keys = list(channels_dict.keys())
+    # Etsitään kaikki parit
+    i = 1
+    while f"kanava{i}_nimi" in channels_dict and f"kanava{i}_id" in channels_dict:
+        nimi = channels_dict[f"kanava{i}_nimi"]
+        cid = channels_dict[f"kanava{i}_id"]
+        kanavat[nimi] = cid
+        i += 1
+        
+    if not kanavat:
+        raise Exception("Ei kanavia löytynyt")
+        
+except Exception:
+    # Varakonfiguraatio, jos vanha tyyli käytössä
+    kanavat = {
+        "Kanava 1": st.secrets.get("YOUTUBE_CHANNEL_ID", "UCxxxxxxxxxxxxxx"),
+        "Uusi Kanava": "UC4GkaGiV3vnTUG_PiOfgu7w"
+    }
+
+# --- SIVUPALKKI: Kanavan valinta ja asetukset ---
+st.sidebar.header("⚙️ Kanavan valinta")
+valittu_kanava_nimi = st.sidebar.selectbox("Valitse tarkasteltava kanava:", list(kanavat.keys()))
+valittu_channel_id = kanavat[valittu_kanava_nimi]
+
+st.sidebar.markdown("---")
+st.sidebar.header("💵 Tulolaskurin asetukset")
 cpm_rate = st.sidebar.slider("Tuotto / 1000 näyttökertaa ($ USD)", min_value=0.5, max_value=10.0, value=1.0, step=0.1)
 eur_rate = st.sidebar.number_input("EUR / USD valuuttakurssi", value=0.92, step=0.01)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📅 Valitse aikajakso arviolle")
-
-# Vaihtoehdot aikajaksolle
 aikajakso_tyyppi = st.sidebar.radio(
     "Miten haluat määrittää ajanjakson?",
     ["Päivämääräväli (Kalenteri)", "Syötä arvioidut näyttökerrat ajanjaksolle"]
 )
 
-# Haetaan tiedot YouTubesta kanavan kokonaistilastoja varten
+# Haetaan tiedot valitulle kanavalle YouTubesta
 try:
-    url = f"https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&id={channel_id}&key={api_key}"
+    url = f"https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&id={valittu_channel_id}&key={api_key}"
     
     with urllib.request.urlopen(url) as response:
         data = json.loads(response.read().decode())
@@ -48,7 +76,7 @@ try:
         total_videos = int(stats["videoCount"])
         total_subs = int(stats["subscriberCount"])
         
-        st.header(f"Kanava: {channel_name}")
+        st.header(f"Kanava: {channel_name} ({valittu_kanava_nimi})")
         
         # Päämetriikat
         col1, col2, col3 = st.columns(3)
@@ -62,21 +90,15 @@ try:
         if aikajakso_tyyppi == "Päivämääräväli (Kalenteri)":
             st.subheader("📆 Valitse kalenterista tarkastelujakso")
             
-            # Kalenterivalitsimet
             col_alku, col_loppu = st.columns(2)
             aloituspaiva = col_alku.date_input("Alkupäivä", date(2026, 1, 1))
             loppupaiva = col_loppu.date_input("Loppupäivä", date.today())
             
-            # Lasketaan päivien määrä
             paivia = (loppupaiva - aloituspaiva).days
             if paivia <= 0:
-                paivia = 1  # Estetään nollalla jako
+                paivia = 1
                 
             st.write(f"Valittu aikajakso: **{paivia} päivää** ({aloituspaiva} – {loppupaiva})")
-            
-            # Koska YouTube API ei ilman OAuthia anna päiväkohtaista dataa kanavalle, 
-            # annetaan käyttäjän arvioida keskimääräinen päivätahti tai syöttää luvut tälle jaksolle:
-            st.info("💡 **Vinkki:** Voit säätää alta, kuinka monta näyttökertaa sait keskimäärin päivässä tai yhteensä tällä aikajaksolla.")
             
             jakso_nayttokerrat = st.number_input("Näyttökerrat valitulla aikajaksolla:", min_value=0, value=int(1000 * paivia), step=100)
             
@@ -100,7 +122,7 @@ try:
             r2.metric("Tuotot (EUR)", f"~{m_eur:,.2f} €")
             
     else:
-        st.error("Kanavaa ei löytynyt. Tarkista Kanavan ID Streamlit Secrets -asetuksista.")
+        st.error("Kanavaa ei löytynyt annetulla Kanavan ID:llä. Tarkista ID Streamlit Secrets -asetuksista.")
         
 except Exception as e:
     st.error(f"Virhe tietojen haussa: {e}")
