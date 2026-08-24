@@ -80,14 +80,10 @@ st.sidebar.info(f"Ajanjakso: **{valittu_alkupaiva}** – **{valittu_loppupaiva}*
 
 st.markdown("---")
 
-# Kerätään dataa globaalia yhteenvetoa varten
 kaikki_nayttokerrat_yhteensa = 0
 kaikki_videot_data = []
 
-# --- NÄYTETÄÄN KANAVAT VIEREKKÄIN ---
 sarakkeet = st.columns(len(kanavat))
-
-kanava_tulokset = {}
 
 for idx, (nimi, channel_id) in enumerate(kanavat.items()):
     with sarakkeet[idx]:
@@ -156,20 +152,45 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                     v_views = int(v_item.get("statistics", {}).get("viewCount", 0))
                     haetut_tiedot[v_id] = v_views
                 
+                # Lasketaan keskiarvo päiväkohtaiselle suosiolle trendin määrittelyä varten
+                paiva_kohtaiset_keskiarvot = []
+                temp_calc = []
                 for v in raw_videos:
                     v_views = haetut_tiedot.get(v["id"], 0)
+                    paivia_olemassa = (tanaan - v["date"]).days
+                    if paivia_olemassa < 1:
+                        paivia_olemassa = 1
+                    vpaiva = v_views / paivia_olemassa
+                    paiva_kohtaiset_keskiarvot.append(vpaiva)
+                    temp_calc.append((v, v_views, vpaiva))
+
+                keskiarvo_tahti = sum(paiva_kohtaiset_keskiarvot) / len(paiva_kohtaiset_keskiarvot) if paiva_kohtaiset_keskiarvot else 1
+
+                for v, v_views, vpaiva in temp_calc:
                     v_usd = (v_views / 1000) * cpm_rate
                     v_eur = v_usd * eur_rate
                     ajanjakson_nayttokerrat += v_views
                     kaikki_nayttokerrat_yhteensa += v_views
                     
+                    # Määritellään trendi
+                    # Jos päivätahti on yli 1.5x kanavan keskiarvon -> Nousussa
+                    # Jos alle puolet keskiarvosta -> Hiljainen / Laskussa
+                    # Muuten -> Tasainen
+                    if vpaiva > keskiarvo_tahti * 1.5:
+                        trendi = "🚀 Nousussa"
+                    elif vpaiva < keskiarvo_tahti * 0.5:
+                        trendi = "💤 Hiljainen"
+                    else:
+                        trendi = "⚖️ Tasainen"
+
                     v_info = {
                         "Kanava": nimi,
                         "Otsikko": v["title"],
                         "Julkaisupäivä": str(v["date"]),
                         "Näyttökerrat": v_views,
                         "Tuotto ($)": round(v_usd, 2),
-                        "Tuotto (€)": round(v_eur, 2)
+                        "Tuotto (€)": round(v_eur, 2),
+                        "Trendi": trendi
                     }
                     video_list.append(v_info)
                     kaikki_videot_data.append(v_info)
@@ -185,7 +206,6 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 col_u.metric("Tuotot (USD)", f"${jakso_usd:,.2f}")
                 col_e.metric("Tuotot (EUR)", f"~{jakso_eur:,.2f} €")
                 
-                # 🌟 Nosta esiin kanavan hitti (suosituin video)
                 if video_list:
                     paras_video = video_list[0]
                     st.success(f"🏆 **Kanavan hitti:**\n_{paras_video['Otsikko']}_\n({paras_video['Näyttökerrat']:,} näyttöä | ${paras_video['Tuotto ($)']})")
@@ -194,7 +214,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 st.markdown(f"🎬 **Löytyneet videot ({len(video_list)} kpl):**")
                 
                 df_kanava = pd.DataFrame(video_list)
-                display_df = df_kanava[["Otsikko", "Julkaisupäivä", "Näyttökerrat", "Tuotto ($)", "Tuotto (€)"]]
+                display_df = df_kanava[["Otsikko", "Julkaisupäivä", "Näyttökerrat", "Trendi", "Tuotto ($)", "Tuotto (€)"]]
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
                 
             else:
@@ -223,12 +243,10 @@ if kaikki_videot_data:
     
     df_kaikki = pd.DataFrame(kaikki_videot_data)
     
-    # Näytetään pylväskaavio top-videoista
     st.markdown("**Top-videot näyttökertojen mukaan:**")
     chart_data = df_kaikki.set_index("Otsikko")["Näyttökerrat"].head(10)
     st.bar_chart(chart_data)
     
-    # CSV-latauspainike
     csv = df_kaikki.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Lataa kaikki tiedot CSV-tiedostona (Exceliin)",
