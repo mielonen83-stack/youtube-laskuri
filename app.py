@@ -7,23 +7,23 @@ import pandas as pd
 # Sivuston ulkoasu
 st.set_page_config(page_title="YouTube Tulolaskuri Pro", page_icon="💰", layout="wide")
 
-# --- SALASANASUOJAUS ---
+# --- SALASANASUOJAUS (TURVALLINEN - EI OLETUSTUNNUKSIA) ---
 st.sidebar.header("🔐 Kirjaudu sisään")
 syotetty_tunnus = st.sidebar.text_input("Käyttäjätunnus")
 syotetty_salasana = st.sidebar.text_input("Salasana", type="password")
 
-# Haetaan oikeat tunnukset secretsistä (tai määritellään varalle oletukset)
+# Haetaan tunnukset suoraan secretsistä, ilman vuotavia oletuksia
 try:
     oikea_tunnus = st.secrets["salasana"]["kayttaja"]
     oikea_salasana = st.secrets["salasana"]["salasana"]
 except Exception:
-    oikea_tunnus = "admin"
-    oikea_salasana = "salasana123"
+    oikea_tunnus = ""
+    oikea_salasana = ""
 
 if syotetty_tunnus != oikea_tunnus or syotetty_salasana != oikea_salasana:
     st.title("💰 YouTube Tulolaskuri & Analytiikka Pro")
     st.warning("⚠️ Syötä sivupalkkiin oikea käyttäjätunnus ja salasana nähdäksesi kanavien tiedot.")
-    st.stop() # Pysäyttää ohjelman tähän, eikä muuta sivua näytetä ennen kirjautumista
+    st.stop() # Pysäyttää ohjelman tähän, eikä mitään muuta näytetä ennen kirjautumista
 
 # --- VARSIKAINAINEN SOVELLUS (NÄKYY VAIN KIRJAUTUNEELLE) ---
 st.title("💰 YouTube Tulolaskuri & Analytiikka Pro")
