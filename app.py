@@ -2,6 +2,7 @@ import streamlit as st
 import urllib.request
 import json
 from datetime import date, datetime, timedelta
+import pandas as pd
 
 # Sivuston ulkoasu
 st.set_page_config(page_title="YouTube Tulolaskuri Pro", page_icon="💰", layout="wide")
@@ -79,8 +80,14 @@ st.sidebar.info(f"Ajanjakso: **{valittu_alkupaiva}** – **{valittu_loppupaiva}*
 
 st.markdown("---")
 
+# Kerätään dataa globaalia yhteenvetoa varten
+kaikki_nayttokerrat_yhteensa = 0
+kaikki_videot_data = []
+
 # --- NÄYTETÄÄN KANAVAT VIEREKKÄIN ---
 sarakkeet = st.columns(len(kanavat))
+
+kanava_tulokset = {}
 
 for idx, (nimi, channel_id) in enumerate(kanavat.items()):
     with sarakkeet[idx]:
@@ -91,9 +98,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
             continue
             
         try:
-            # 1. Haetaan kanavan tiedot
             url = f"https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet,contentDetails&id={channel_id}&key={api_key}"
-            
             with urllib.request.urlopen(url) as response:
                 data = json.loads(response.read().decode())
                 
@@ -110,7 +115,6 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
             
             st.caption(f"YouTube-nimi: **{yt_nimi}**")
             
-            # 2. Haetaan soittolistan videot
             playlist_url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={uploads_playlist_id}&maxResults=50&key={api_key}"
             
             try:
@@ -152,23 +156,24 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                     v_views = int(v_item.get("statistics", {}).get("viewCount", 0))
                     haetut_tiedot[v_id] = v_views
                 
-                # Yhdistetään tiedot ja lasketaan tuotot
                 for v in raw_videos:
                     v_views = haetut_tiedot.get(v["id"], 0)
                     v_usd = (v_views / 1000) * cpm_rate
                     v_eur = v_usd * eur_rate
                     ajanjakson_nayttokerrat += v_views
+                    kaikki_nayttokerrat_yhteensa += v_views
                     
-                    video_list.append({
+                    v_info = {
+                        "Kanava": nimi,
                         "Otsikko": v["title"],
                         "Julkaisupäivä": str(v["date"]),
                         "Näyttökerrat": v_views,
                         "Tuotto ($)": round(v_usd, 2),
-                        "Tuotto (€)": round(v_eur, 2),
-                        "id": v["id"]
-                    })
+                        "Tuotto (€)": round(v_eur, 2)
+                    }
+                    video_list.append(v_info)
+                    kaikki_videot_data.append(v_info)
                 
-                # JÄRJESTYS: Katsotuimmat ensin (voit vaihtaa halutessasi)
                 video_list = sorted(video_list, key=lambda x: x["Näyttökerrat"], reverse=True)
                 
                 jakso_usd = (ajanjakson_nayttokerrat / 1000) * cpm_rate
@@ -180,15 +185,16 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 col_u.metric("Tuotot (USD)", f"${jakso_usd:,.2f}")
                 col_e.metric("Tuotot (EUR)", f"~{jakso_eur:,.2f} €")
                 
+                # 🌟 Nosta esiin kanavan hitti (suosituin video)
+                if video_list:
+                    paras_video = video_list[0]
+                    st.success(f"🏆 **Kanavan hitti:**\n_{paras_video['Otsikko']}_\n({paras_video['Näyttökerrat']:,} näyttöä | ${paras_video['Tuotto ($)']})")
+                
                 st.markdown("---")
-                st.markdown(f"🎬 **Jaksolta löytyneet videot ({len(video_list)} kpl):**")
+                st.markdown(f"🎬 **Löytyneet videot ({len(video_list)} kpl):**")
                 
-                # Näytetään siistinä taulukkona (jota voi järjestää sarakkeiden mukaan)
-                import pandas as pd
-                df = pd.DataFrame(video_list)
-                # Poistetaan ID-sarake näkyvistä taulukosta
-                display_df = df[["Otsikko", "Julkaisupäivä", "Näyttökerrat", "Tuotto ($)", "Tuotto (€)"]]
-                
+                df_kanava = pd.DataFrame(video_list)
+                display_df = df_kanava[["Otsikko", "Julkaisupäivä", "Näyttökerrat", "Tuotto ($)", "Tuotto (€)"]]
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
                 
             else:
@@ -196,6 +202,40 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 
         except Exception as e:
             st.error(f"Virhe tietojen käsittelyssä: {e}")
+
+# --- KOKONAISYHTEENVETO KAIKISTA KANAVISTA ---
+if len(kanavat) > 1 and kaikki_nayttokerrat_yhteensa > 0:
+    st.markdown("---")
+    st.header("🌐 Kaikkien kanavien kokonaissaldo yhteensä")
+    
+    kokonais_usd = (kaikki_nayttokerrat_yhteensa / 1000) * cpm_rate
+    kokonais_eur = kokonais_usd * eur_rate
+    
+    col_tot1, col_tot2, col_tot3 = st.columns(3)
+    col_tot1.metric("Kokonaisnäyttökerrat", f"{kaikki_nayttokerrat_yhteensa:,} kpl")
+    col_tot2.metric("Kokonistuotot (USD)", f"${kokonais_usd:,.2f}")
+    col_tot3.metric("Kokonistuotot (EUR)", f"~{kokonais_eur:,.2f} €")
+
+# --- LATAUSPAINIKE JA KAAVIO ---
+if kaikki_videot_data:
+    st.markdown("---")
+    st.subheader("📈 Visuaalinen katsaus ja vienti")
+    
+    df_kaikki = pd.DataFrame(kaikki_videot_data)
+    
+    # Näytetään pylväskaavio top-videoista
+    st.markdown("**Top-videot näyttökertojen mukaan:**")
+    chart_data = df_kaikki.set_index("Otsikko")["Näyttökerrat"].head(10)
+    st.bar_chart(chart_data)
+    
+    # CSV-latauspainike
+    csv = df_kaikki.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Lataa kaikki tiedot CSV-tiedostona (Exceliin)",
+        data=csv,
+        file_name=f"youtube_tulot_{valittu_alkupaiva}_{valittu_loppupaiva}.csv",
+        mime="text/csv",
+    )
 
 st.markdown("---")
 st.caption(f"💡 Laskelmat perustuvat arvoon **${cpm_rate} / 1000 näyttökertaa** ja valuuttakurssiin **{eur_rate} EUR/USD**.")
