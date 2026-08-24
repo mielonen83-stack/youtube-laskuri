@@ -7,12 +7,11 @@ import pandas as pd
 # Sivuston ulkoasu
 st.set_page_config(page_title="YouTube Tulolaskuri Pro", page_icon="💰", layout="wide")
 
-# --- SALASANASUOJAUS (TURVALLINEN - EI OLETUSTUNNUKSIA) ---
+# --- SALASANASUOJAUS ---
 st.sidebar.header("🔐 Kirjaudu sisään")
 syotetty_tunnus = st.sidebar.text_input("Käyttäjätunnus")
 syotetty_salasana = st.sidebar.text_input("Salasana", type="password")
 
-# Haetaan tunnukset suoraan secretsistä, ilman vuotavia oletuksia
 try:
     oikea_tunnus = st.secrets["salasana"]["kayttaja"]
     oikea_salasana = st.secrets["salasana"]["salasana"]
@@ -23,20 +22,18 @@ except Exception:
 if syotetty_tunnus != oikea_tunnus or syotetty_salasana != oikea_salasana:
     st.title("💰 YouTube Tulolaskuri & Analytiikka Pro")
     st.warning("⚠️ Syötä sivupalkkiin oikea käyttäjätunnus ja salasana nähdäksesi kanavien tiedot.")
-    st.stop() # Pysäyttää ohjelman tähän, eikä mitään muuta näytetä ennen kirjautumista
+    st.stop()
 
-# --- VARSIKAINAINEN SOVELLUS (NÄKYY VAIN KIRJAUTUNEELLE) ---
+# --- SOVELLUS ALKAA ---
 st.title("💰 YouTube Tulolaskuri & Analytiikka Pro")
-st.markdown("Seuraa kanaviesi tuottoja, näyttökertoja ja tulevia ennusteita suoraan yhdeltä siistiltä näytöltä.")
+st.markdown("Seuraa kanaviesi tuottoja, näyttökertoja, tilaajakehitystä ja vertailuja suoraan yhdeltä näytöltä.")
 
-# Haetaan API-avain salaisuuksista
 try:
     api_key = st.secrets["YOUTUBE_API_KEY"]
 except Exception:
     st.error("⚠️ API-avainta ei löydy Streamlit Secretsistä! Tarkista asetukset.")
     st.stop()
 
-# Määritellään kanavat turvallisesti
 kanavat = {}
 try:
     channels_dict = st.secrets["channels"]
@@ -55,7 +52,7 @@ if not kanavat:
         "Toinen kanava": "UC4GkaGiV3vnTUG_PiOfgu7w"
     }
 
-# --- SIVUPALKKI: Asetukset ja Ajanjakso ---
+# --- SIVUPALKKI ---
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Asetukset")
 cpm_rate = st.sidebar.slider("Tuotto / 1000 näyttökertaa ($ USD)", min_value=0.5, max_value=10.0, value=1.0, step=0.1)
@@ -112,10 +109,19 @@ st.sidebar.info(f"Ajanjakso: **{valittu_alkupaiva}** – **{valittu_loppupaiva}*
 st.markdown("---")
 
 kaikki_nayttokerrat_yhteensa = 0
+edellisen_jakson_nayttokerrat_yhteensa = 0
 kaikki_videot_data = []
 
 paivia_30_sitten = tanaan - timedelta(days=30)
 ennuste_nayttokerrat_30pv = 0
+
+# Lasketaan vertailujakso (saman pituinen ajanjakso heti valitun jakson edeltä)
+jakson_pituus_paivissa = (valittu_loppupaiva - valittu_alkupaiva).days
+if jakson_pituus_paivissa < 1:
+    jakson_pituus_paivissa = 1
+
+vertailu_loppupaiva = valittu_alkupaiva - timedelta(days=1)
+vertailu_alkupaiva = vertailu_loppupaiva - timedelta(days=jakson_pituus_paivissa)
 
 sarakkeet = st.columns(len(kanavat))
 
@@ -139,11 +145,13 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
             channel_info = data["items"][0]
             snippet = channel_info["snippet"]
             content_details = channel_info["contentDetails"]
+            statistics = channel_info["statistics"]
             
             uploads_playlist_id = content_details["relatedPlaylists"]["uploads"]
             yt_nimi = snippet["title"]
+            tilaajamaara = int(statistics.get("subscriberCount", 0))
             
-            st.caption(f"YouTube-nimi: **{yt_nimi}**")
+            st.caption(f"YouTube-nimi: **{yt_nimi}** | 👥 Tilaajat: **{tilaajamaara:,}**")
             
             playlist_url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={uploads_playlist_id}&maxResults=50&key={api_key}"
             
@@ -155,7 +163,9 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 continue
                 
             raw_videos = []
+            raw_videos_vertailu = []
             raw_videos_30pv = []
+            
             for item in pl_data.get("items", []):
                 snippet_data = item.get("snippet", {})
                 resource_id = snippet_data.get("resourceId", {})
@@ -166,14 +176,19 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 if vid and v_published_at:
                     try:
                         v_date = datetime.strptime(v_published_at[:10], "%Y-%m-%d").date()
+                        # Valittu jakso
                         if valittu_alkupaiva <= v_date <= valittu_loppupaiva:
                             raw_videos.append({"id": vid, "title": vtitle, "date": v_date})
+                        # Edellinen vertailujakso
+                        if vertailu_alkupaiva <= v_date <= vertailu_loppupaiva:
+                            raw_videos_vertailu.append({"id": vid, "title": vtitle, "date": v_date})
+                        # 30 päivän ennustejakso
                         if paivia_30_sitten <= v_date <= tanaan:
                             raw_videos_30pv.append({"id": vid, "title": vtitle, "date": v_date})
                     except Exception:
                         continue
             
-            kaikki_haku_idt = list(set([v["id"] for v in raw_videos] + [v["id"] for v in raw_videos_30pv]))
+            kaikki_haku_idt = list(set([v["id"] for v in raw_videos] + [v["id"] for v in raw_videos_vertailu] + [v["id"] for v in raw_videos_30pv]))
             
             haetut_tiedot = {}
             if kaikki_haku_idt:
@@ -188,6 +203,10 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
 
             for v in raw_videos_30pv:
                 ennuste_nayttokerrat_30pv += haetut_tiedot.get(v["id"], 0)
+
+            # Lasketaan edellisen jakson näyttökerrat vertailua varten
+            edellisen_jakson_nayttokerrat = sum([haetut_tiedot.get(v["id"], 0) for v in raw_videos_vertailu])
+            edellisen_jakson_nayttokerrat_yhteensa += edellisen_jakson_nayttokerrat
 
             ajanjakson_nayttokerrat = 0
             video_list = []
@@ -239,7 +258,14 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 jakso_usd = (ajanjakson_nayttokerrat / 1000) * cpm_rate
                 jakso_eur = jakso_usd * eur_rate
                 
-                st.metric("Valitun ajan näyttökerrat", f"{ajanjakson_nayttokerrat:,} kpl")
+                # Lasketaan kasvuprosentti edelliseen jaksoon
+                if edellisen_jakson_nayttokerrat > 0:
+                    muutos_prosentti = ((ajanjakson_nayttokerrat - edellisen_jakson_nayttokerrat) / edellisen_jakson_nayttokerrat) * 100
+                    muutos_teksti = f"{muutos_prosentti:+.1f}% edelliseen jaksoon"
+                else:
+                    muutos_teksti = "Ei vertailudataa"
+
+                st.metric("Valitun ajan näyttökerrat", f"{ajanjakson_nayttokerrat:,} kpl", delta=muutos_teksti)
                 
                 col_u, col_e = st.columns(2)
                 col_u.metric("Tuotot (USD)", f"${jakso_usd:,.2f}")
@@ -252,12 +278,36 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 st.markdown("---")
                 st.markdown(f"🎬 **Löytyneet videot ({len(video_list)} kpl):**")
                 
-                df_kanava = pd.DataFrame(video_list)
-                display_df = df_kanava[["Otsikko", "Julkaisupäivä", "Näyttökerrat", "Trendi", "Tuotto ($)", "Tuotto (€)"]]
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
+                # --- OMINAISuus 4: Haku ja suodatus videolistaan ---
+                haku_teksti = st.text_input(f"🔍 Etsi videoita ({nimi})", key=f"haku_{nimi}")
+                jarjestys = st.selectbox(
+                    f"Järjestä lista:", 
+                    ["Eniten näyttöjä", "Vähiten näyttöjä", "Uusin ensin", "Vanhin ensin"],
+                    key=f"jarjestys_{nimi}"
+                )
+
+                filtered_list = video_list
+                if haku_teksti:
+                    filtered_list = [v for v in filtered_list if haku_teksti.lower() in v["Otsikko"].lower()]
+
+                if jarjestys == "Eniten näyttöjä":
+                    filtered_list = sorted(filtered_list, key=lambda x: x["Näyttökerrat"], reverse=True)
+                elif jarjestys == "Vähiten näyttöjä":
+                    filtered_list = sorted(filtered_list, key=lambda x: x["Näyttökerrat"], reverse=False)
+                elif jarjestys == "Uusin ensin":
+                    filtered_list = sorted(filtered_list, key=lambda x: x["Julkaisupäivä"], reverse=True)
+                elif jarjestys == "Vanhin ensin":
+                    filtered_list = sorted(filtered_list, key=lambda x: x["Julkaisupäivä"], reverse=False)
+
+                df_kanava = pd.DataFrame(filtered_list)
+                if not df_kanava.empty:
+                    display_df = df_kanava[["Otsikko", "Julkaisupäivä", "Näyttökerrat", "Trendi", "Tuotto ($)", "Tuotto (€)"]]
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Hakuehdoilla ei löytynyt videoita.")
                 
                 with st.expander(f"🔗 Avaa suorat YouTube-linkit ({nimi})"):
-                    for v in video_list:
+                    for v in filtered_list:
                         st.markdown(f"[{v['Otsikko']}]({v['Linkki']}) — 👁️ {v['Näyttökerrat']:,} näyttöä ({v['Trendi']})")
                 
             else:
@@ -274,8 +324,14 @@ if len(kanavat) > 1 and kaikki_nayttokerrat_yhteensa > 0:
     kokonais_usd = (kaikki_nayttokerrat_yhteensa / 1000) * cpm_rate
     kokonais_eur = kokonais_usd * eur_rate
     
+    if edellisen_jakson_nayttokerrat_yhteensa > 0:
+        kokonais_muutos = ((kaikki_nayttokerrat_yhteensa - edellisen_jakson_nayttokerrat_yhteensa) / edellisen_jakson_nayttokerrat_yhteensa) * 100
+        kokonais_muutos_teksti = f"{kokonais_muutos:+.1f}% edelliseen jaksoon"
+    else:
+        kokonais_muutos_teksti = "Ei vertailudataa"
+
     col_tot1, col_tot2, col_tot3 = st.columns(3)
-    col_tot1.metric("Kokonaisnäyttökerrat", f"{kaikki_nayttokerrat_yhteensa:,} kpl")
+    col_tot1.metric("Kokonaisnäyttökerrat", f"{kaikki_nayttokerrat_yhteensa:,} kpl", delta=kokonais_muutos_teksti)
     col_tot2.metric("Kokonistuotot (USD)", f"${kokonais_usd:,.2f}")
     col_tot3.metric("Kokonistuotot (EUR)", f"~{kokonais_eur:,.2f} €")
 
