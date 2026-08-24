@@ -94,8 +94,8 @@ st.markdown("---")
 kaikki_nayttokerrat_yhteensa = 0
 kaikki_videot_data = []
 
-# Apumuuttuja kiinteää 30 päivän ennustetta varten
-30pv_sitten = tanaan - timedelta(days=30)
+# Korjattu muuttujan nimi (ei saa alkaa numerolla)
+paivia_30_sitten = tanaan - timedelta(days=30)
 ennuste_nayttokerrat_30pv = 0
 
 sarakkeet = st.columns(len(kanavat))
@@ -151,18 +151,15 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                         if valittu_alkupaiva <= v_date <= valittu_loppupaiva:
                             raw_videos.append({"id": vid, "title": vtitle, "date": v_date})
                         # Viimeisen 30 päivän videot ennustetta varten
-                        if 30pv_sitten <= v_date <= tanaan:
+                        if paivia_30_sitten <= v_date <= tanaan:
                             raw_videos_30pv.append({"id": vid, "title": vtitle, "date": v_date})
                     except Exception:
                         continue
             
-            # Haetaan tilastot erikseen myös 30 päivän ennustetta varten, jos tarpeen
-            # (tai voidaan hyödyntää samoja videoita jos ne menevät päällekkäin)
             kaikki_haku_idt = list(set([v["id"] for v in raw_videos] + [v["id"] for v in raw_videos_30pv]))
             
             haetut_tiedot = {}
             if kaikki_haku_idt:
-                # Pilkotaan tarvittaessa jos ID-jono on pitkä, mutta YouTube API kestää kerralla 50 ID:tä
                 vids_string = ",".join(kaikki_haku_idt[:50])
                 stats_url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics&id={vids_string}&key={api_key}"
                 with urllib.request.urlopen(stats_url) as st_response:
@@ -266,7 +263,7 @@ if len(kanavat) > 1 and kaikki_nayttokerrat_yhteensa > 0:
     col_tot2.metric("Kokonistuotot (USD)", f"${kokonais_usd:,.2f}")
     col_tot3.metric("Kokonistuotot (EUR)", f"~{kokonais_eur:,.2f} €")
 
-# --- TUOTTO- JA TAHDIENNUSTE (KIINTEÄSTI 30 PÄIVÄN POHJALTA) SEKÄ TAVOITE ---
+# --- TUOTTO- JA TAHDIENNUSTE SEKÄ TAVOITE ---
 if kaikki_videot_data:
     st.markdown("---")
     st.header("🎯 Tuottotavoite ja tahtiennuste")
@@ -287,7 +284,6 @@ if kaikki_videot_data:
     ennuste_vuosi_eur = paiva_tuotto_eur * 365
     ennuste_vuosi_usd = paiva_tuotto_usd * 365
 
-    # Näytetään kiinteästi viimeisen 30 päivän tahtiin perustuva ennuste
     st.markdown("##### 📈 Ennuste nykyisellä vauhdilla (perustuu kiinteästi viimeiseen 30 päivään)")
     col_en1, col_en2 = st.columns(2)
     col_en1.metric("Arvioitu tuotto / 30 päivää", f"~{ennuste_30pv_eur:,.2f} €", f"${ennuste_30pv_usd:,.2f}")
@@ -308,7 +304,6 @@ if kaikki_videot_data:
         puuttuu_eur = tavoite_eur - nykyiset_tuotot_eur
         puuttuu_nayttoja = int((puuttuu_usd / cpm_rate) * 1000)
         
-        # Lasketaan virstanpylväitä
         tuhat_videot = puuttuu_nayttoja / 1000
         kymppi_videot = puuttuu_nayttoja / 10000
         
@@ -332,7 +327,7 @@ if kaikki_videot_data:
         label="📥 Lataa kaikki tiedot CSV-tiedostona (Exceliin)",
         data=csv,
         file_name=f"youtube_tulot_{valittu_alkupaiva}_{valittu_loppupaiva}.csv",
-        mime="text/css",
+        mime="text/csv",
     )
 
 st.markdown("---")
