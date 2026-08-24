@@ -56,7 +56,6 @@ aikajakso_valinta = st.sidebar.selectbox(
 
 tanaan = date.today()
 
-# Määritellään alkupäivä ja loppupäivä valinnan mukaan
 if aikajakso_valinta == "Viimeiset 30 päivää":
     valittu_alkupaiva = tanaan - timedelta(days=30)
     valittu_loppupaiva = tanaan
@@ -70,7 +69,6 @@ elif aikajakso_valinta == "Koko historia (Kaikki videot)":
     valittu_alkupaiva = date(2010, 1, 1)
     valittu_loppupaiva = tanaan
 else:
-    # Vapaa kalenterivalintaväli
     col_a, col_l = st.sidebar.columns(2)
     with col_a:
         valittu_alkupaiva = st.date_input("Alkupäivä", tanaan - timedelta(days=30))
@@ -105,7 +103,6 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 
             channel_info = data["items"][0]
             snippet = channel_info["snippet"]
-            stats = channel_info["statistics"]
             content_details = channel_info["contentDetails"]
             
             uploads_playlist_id = content_details["relatedPlaylists"]["uploads"]
@@ -123,7 +120,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 st.info("Kanavalla ei ole julkisia videoita tai haku epäonnistui.")
                 continue
                 
-            video_list = []
+            raw_videos = []
             for item in pl_data.get("items", []):
                 snippet_data = item.get("snippet", {})
                 resource_id = snippet_data.get("resourceId", {})
@@ -134,16 +131,16 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 if vid and v_published_at:
                     try:
                         v_date = datetime.strptime(v_published_at[:10], "%Y-%m-%d").date()
-                        # Tarkistetaan että video osuu valitulle aikavälille (alkupäivä <= julkaisupäivä <= loppupäivä)
                         if valittu_alkupaiva <= v_date <= valittu_loppupaiva:
-                            video_list.append({"id": vid, "title": vtitle, "date": v_date})
+                            raw_videos.append({"id": vid, "title": vtitle, "date": v_date})
                     except Exception:
                         continue
             
             ajanjakson_nayttokerrat = 0
+            video_list = []
             
-            if video_list:
-                vids_string = ",".join([v["id"] for v in video_list])
+            if raw_videos:
+                vids_string = ",".join([v["id"] for v in raw_videos])
                 stats_url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics&id={vids_string}&key={api_key}"
                 
                 with urllib.request.urlopen(stats_url) as st_response:
@@ -154,7 +151,25 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                     v_id = v_item.get("id")
                     v_views = int(v_item.get("statistics", {}).get("viewCount", 0))
                     haetut_tiedot[v_id] = v_views
+                
+                # Yhdistetään tiedot ja lasketaan tuotot
+                for v in raw_videos:
+                    v_views = haetut_tiedot.get(v["id"], 0)
+                    v_usd = (v_views / 1000) * cpm_rate
+                    v_eur = v_usd * eur_rate
                     ajanjakson_nayttokerrat += v_views
+                    
+                    video_list.append({
+                        "Otsikko": v["title"],
+                        "Julkaisupäivä": str(v["date"]),
+                        "Näyttökerrat": v_views,
+                        "Tuotto ($)": round(v_usd, 2),
+                        "Tuotto (€)": round(v_eur, 2),
+                        "id": v["id"]
+                    })
+                
+                # JÄRJESTYS: Katsotuimmat ensin (voit vaihtaa halutessasi)
+                video_list = sorted(video_list, key=lambda x: x["Näyttökerrat"], reverse=True)
                 
                 jakso_usd = (ajanjakson_nayttokerrat / 1000) * cpm_rate
                 jakso_eur = jakso_usd * eur_rate
@@ -166,16 +181,16 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 col_e.metric("Tuotot (EUR)", f"~{jakso_eur:,.2f} €")
                 
                 st.markdown("---")
-                st.markdown(f"🎬 **Löytyneet videot ({len(video_list)} kpl):**")
+                st.markdown(f"🎬 **Jaksolta löytyneet videot ({len(video_list)} kpl):**")
                 
-                with st.expander(f"Näytä videot ({nimi})"):
-                    for v in video_list:
-                        v_views = haetut_tiedot.get(v["id"], 0)
-                        v_usd = (v_views / 1000) * cpm_rate
-                        title = v["title"]
-                        st.markdown(f"**{title}**")
-                        st.caption(f"📅 {v['date']} | 👁️ {v_views:,} näyttöä | 💵 ${v_usd:.2f}")
-                        st.markdown("---")
+                # Näytetään siistinä taulukkona (jota voi järjestää sarakkeiden mukaan)
+                import pandas as pd
+                df = pd.DataFrame(video_list)
+                # Poistetaan ID-sarake näkyvistä taulukosta
+                display_df = df[["Otsikko", "Julkaisupäivä", "Näyttökerrat", "Tuotto ($)", "Tuotto (€)"]]
+                
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
+                
             else:
                 st.info(f"Ei videoita valitulla aikajaksolla.")
                 
