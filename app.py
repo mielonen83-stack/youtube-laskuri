@@ -8,7 +8,7 @@ import pandas as pd
 st.set_page_config(page_title="YouTube Tulolaskuri Pro", page_icon="💰", layout="wide")
 
 st.title("💰 YouTube Tulolaskuri & Analytiikka Pro")
-st.markdown("Seuraa kanaviesi tuottoja ja näyttökertoja valitsemallasi aikajaksolla.")
+st.markdown("Seuraa kanaviesi tuottoja, näyttökertoja ja tulevia ennusteita suoraan yhdeltä siistiltä näytöltä.")
 
 # Haetaan API-avain salaisuuksista
 try:
@@ -236,7 +236,7 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
         except Exception as e:
             st.error(f"Virhe tietojen käsittelyssä: {e}")
 
-# --- KOKONAISYHTEENVETO JA TAVOITE ---
+# --- KOKONAISYHTEENVETO ---
 if len(kanavat) > 1 and kaikki_nayttokerrat_yhteensa > 0:
     st.markdown("---")
     st.header("🌐 Kaikkien kanavien kokonaissaldo yhteensä")
@@ -249,14 +249,37 @@ if len(kanavat) > 1 and kaikki_nayttokerrat_yhteensa > 0:
     col_tot2.metric("Kokonistuotot (USD)", f"${kokonais_usd:,.2f}")
     col_tot3.metric("Kokonistuotot (EUR)", f"~{kokonais_eur:,.2f} €")
 
-# --- TUOTTOTAVOITTEEN SEURANTA ---
+# --- TUOTTO- JA TAHDIENNUSTE SEKÄ TAVOITTEEN SEURANTA ---
 if kaikki_videot_data:
     st.markdown("---")
-    st.header("🎯 Tuottotavoitteen seurunta")
+    st.header("🎯 Tuottotavoite ja tahtiennuste")
     
     nykyiset_tuotot_usd = (kaikki_nayttokerrat_yhteensa / 1000) * cpm_rate
     nykyiset_tuotot_eur = nykyiset_tuotot_usd * eur_rate
     
+    # Lasketaan nykyisen tahdin ennuste (pohjautuu valittuun aikajaksoon)
+    jakson_paivat = (valittu_loppupaiva - valittu_alkupaiva).days
+    if jakson_paivat < 1:
+        jakson_paivat = 1
+        
+    paiva_tuotto_eur = nykyiset_tuotot_eur / jakson_paivat
+    paiva_tuotto_usd = nykyiset_tuotot_usd / jakson_paivat
+    
+    ennuste_30pv_eur = paiva_tuotto_eur * 30
+    ennuste_30pv_usd = paiva_tuotto_usd * 30
+    
+    ennuste_vuosi_eur = paiva_tuotto_eur * 365
+    ennuste_vuosi_usd = paiva_tuotto_usd * 365
+
+    # Näytetään nykyisen tahdin ennuste
+    st.markdown(f"##### 📈 Ennuste nykyisellä vauhdilla (valittu jakso: {jakson_paivat} päivää)")
+    col_en1, col_en2 = st.columns(2)
+    col_en1.metric("Arvioitu tuotto / 30 päivää", f"~{ennuste_30pv_eur:,.2f} €", f"${ennuste_30pv_usd:,.2f}")
+    col_en2.metric("Arvioitu tuotto / Vuosi (365 pv)", f"~{ennuste_vuosi_eur:,.2f} €", f"${ennuste_vuosi_usd:,.2f}")
+
+    st.markdown("---")
+    
+    # Tavoitteen seuranta
     prosentti = min(int((nykyiset_tuotot_usd / tavoite_usd) * 100), 100)
     
     st.write(f"Asetettu tavoite: **{tavoite_eur:,.2f} €** (${tavoite_usd:,.2f}) | Nykyinen tuotto: **~{nykyiset_tuotot_eur:,.2f} €** (${nykyiset_tuotot_usd:,.2f}) — **{prosentti}% saavutettu**")
@@ -272,17 +295,13 @@ if kaikki_videot_data:
         # Lasketaan virstanpylväitä
         tuhat_videot = puuttuu_nayttoja / 1000
         kymppi_videot = puuttuu_nayttoja / 10000
-        satku_videot = puuttuu_nayttoja / 100000
         
-        # Keskiarvo per video valitulla aikajaksolla
         löytyneiden_maara = len(kaikki_videot_data)
         keskiarvo_per_video_eur = (puuttuu_eur / löytyneiden_maara) if löytyneiden_maara > 0 else 0
-        keskiarvo_per_video_naytot = int(puuttuu_nayttoja / löytyneiden_maara) if löytyneiden_maara > 0 else 0
 
         st.info(f"💡 Tavoitteesta puuttuu vielä **~{puuttuu_eur:,.2f} €** (${puuttuu_usd:,.2f}), mikä vaatii noin **{puuttuu_nayttoja:,}** uutta näyttökertaa.")
         
-        # Havainnollistavat esimerkit tarkennetulla tekstillä
-        st.markdown(f"##### 📐 Mitä tämä vaatii käytännössä (perustuu valittuun aikajaksoon: {valittu_alkupaiva} – {valittu_loppupaiva})?")
+        st.markdown(f"##### 📐 Mitä tavoite vaatii käytännössä (perustuu valittuun aikajaksoon: {valittu_alkupaiva} – {valittu_loppupaiva})?")
         col_v1, col_v2, col_v3 = st.columns(3)
         col_v1.metric("10k näyttökerran videoita", f"~{kymppi_videot:.1f} kpl")
         col_v2.metric("1k näyttökerran videoita", f"~{tuhat_videot:.1f} kpl")
