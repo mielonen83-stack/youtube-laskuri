@@ -1,13 +1,26 @@
 import streamlit as st
 import urllib.request
 import json
-from datetime import date, datetime
+from datetime import date, timedelta
 
 # Sivuston ulkoasu
 st.set_page_config(page_title="YouTube Tulolaskuri Pro", page_icon="💰", layout="wide")
 
+# Moderni tyylittely CSS-muotoiluilla (korteille ja reunuksille)
+st.markdown("""
+    <style>
+    .metric-card {
+        background-color: #1e1e1e;
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid #333;
+        margin-bottom: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("💰 YouTube Tulolaskuri & Analytiikka Pro")
-st.write("Seuraa kanavien tuloja tietystä aloituspäivästä alkaen eteenpäin.")
+st.markdown("Seuraa kanaviesi tuottoja ja näyttökertoja valitsemallasi aikajaksolla.")
 
 # Haetaan API-avain salaisuuksista
 try:
@@ -35,15 +48,35 @@ if not kanavat:
         "Toinen kanava": "UC4GkaGiV3vnTUG_PiOfgu7w"
     }
 
-# --- SIVUPALKKI: Asetukset ja Ajanjakso ---
+# --- SIVUPALKKI: Asetukset ja Parannettu Kalenteri ---
 st.sidebar.header("⚙️ Asetukset")
 cpm_rate = st.sidebar.slider("Tuotto / 1000 näyttökertaa ($ USD)", min_value=0.5, max_value=10.0, value=1.0, step=0.1)
 eur_rate = st.sidebar.number_input("EUR / USD valuuttakurssi", value=0.92, step=0.01)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📅 Aloituspäivä")
-st.sidebar.write("Valitse päivä, josta alkaen julkaistuja videoita lasketaan:")
-valittu_alkupaiva = st.sidebar.date_input("Aloituspäivä", date(2026, 1, 1))
+st.sidebar.subheader("📅 Tarkastelujakso")
+
+# Pikavalinnat kalenterille
+aikajakso_valinta = st.sidebar.selectbox(
+    "Pikavalinta aikajaksolle:",
+    ["Mukautettu (Valitse alta)", "Viimeiset 30 päivää", "Viimeiset 90 päivää", "Vuosi 2026", "Koko historia (Kaikki videot)"]
+)
+
+# Määritetään alkupäivä valinnan mukaan
+tanaan = date.today()
+if aikajakso_valinta == "Viimeiset 30 päivää":
+    oletus_alku = tanaan - timedelta(days=30)
+elif aikajakso_valinta == "Viimeiset 90 päivää":
+    oletus_alku = tanaan - timedelta(days=90)
+elif aikajakso_valinta == "Vuosi 2026":
+    oletus_alku = date(2026, 1, 1)
+elif aikajakso_valinta == "Koko historia (Kaikki videot)":
+    oletus_alku = date(2015, 1, 1) # Riittävän kaukaa
+else:
+    oletus_alku = date(2026, 1, 1)
+
+# Kalenterivalitsin
+valittu_alkupaiva = st.sidebar.date_input("Aloituspäivä", oletus_alku)
 
 st.markdown("---")
 
@@ -52,10 +85,9 @@ sarakkeet = st.columns(len(kanavat))
 
 for idx, (nimi, channel_id) in enumerate(kanavat.items()):
     with sarakkeet[idx]:
-        st.subheader(f"📊 {nimi}")
+        st.markdown(f"### 📊 {nimi}")
         
         try:
-            # 1. Haetaan kanavan tiedot ja uploads-soittolista
             url = f"https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet,contentDetails&id={channel_id}&key={api_key}"
             
             with urllib.request.urlopen(url) as response:
@@ -70,10 +102,10 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 uploads_playlist_id = content_details["relatedPlaylists"]["uploads"]
                 yt_nimi = snippet["title"]
                 
-                st.markdown(f"**Kanava:** {yt_nimi}")
-                st.caption(f"Lasketaan videot alkaen: **{valittu_alkupaiva}**")
+                st.caption(f"YouTube-nimi: **{yt_nimi}**")
+                st.write(f"Lasketaan videot alkaen: `{valittu_alkupaiva}`")
                 
-                # 2. Haetaan soittolistasta videoita (haetaan kerralla useampi, esim. 50 tuoreinta, jotta osuu halutulle ajanjaksolle)
+                # Haetaan videoita soittolistasta
                 playlist_url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={uploads_playlist_id}&maxResults=50&key={api_key}"
                 
                 with urllib.request.urlopen(playlist_url) as pl_response:
@@ -83,15 +115,12 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 for item in pl_data.get("items", []):
                     vid = item["snippet"]["resourceId"]["videoId"]
                     vtitle = item["snippet"]["title"]
-                    # Julkaisupäivä muodossa "2026-03-01T..."
                     v_published_at = item["snippet"]["publishedAt"][:10]
                     v_date = datetime.strptime(v_published_at, "%Y-%m-%d").date()
                     
-                    # Tarkistetaan, että video on julkaistu valittuna päivänä tai sen jälkeen
                     if v_date >= valittu_alkupaiva:
                         video_list.append({"id": vid, "title": vtitle, "date": v_date})
                 
-                # 3. Jos videoita löytyi valitulta aikajaksolta, haetaan niiden näyttökerrat
                 ajanjakson_nayttokerrat = 0
                 
                 if video_list:
@@ -101,7 +130,6 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                     with urllib.request.urlopen(stats_url) as st_response:
                         st_data = json.loads(st_response.read().decode())
                         
-                    # Tallennetaan videokohtaiset tiedot listaukseen
                     haetut_tiedot = {}
                     for v_item in st_data.get("items", []):
                         v_id = v_item["id"]
@@ -109,29 +137,30 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                         haetut_tiedot[v_id] = v_views
                         ajanjakson_nayttokerrat += v_views
                     
-                    # Lasketaan tuotot tälle ajanjaksolle
                     jakso_usd = (ajanjakson_nayttokerrat / 1000) * cpm_rate
                     jakso_eur = jakso_usd * eur_rate
                     
-                    # Näytetään tulokset
-                    st.metric("Ajanjakson näyttökerrat", f"{ajanjakson_nayttokerrat:,} kpl")
-                    st.metric("Tuotot yhteensä (USD)", f"${jakso_usd:,.2f} USD")
-                    st.metric("Tuotot yhteensä (EUR)", f"~{jakso_eur:,.2f} €")
+                    # Siistit tuloslaatikot
+                    st.metric("Valitun ajan näyttökerrat", f"{ajanjakson_nayttokerrat:,} kpl")
+                    
+                    col_u, col_e = st.columns(2)
+                    col_u.metric("Tuotot (USD)", f"${jakso_usd:,.2f}")
+                    col_e.metric("Tuotot (EUR)", f"~{jakso_eur:,.2f} €")
                     
                     st.markdown("---")
-                    st.markdown(f"🎬 **Löytyneet videot ({len(video_list)} kpl):**")
+                    st.markdown(f"🎬 **Jaksolta löytyneet videot ({len(video_list)} kpl):**")
                     
-                    for v in video_list:
-                        v_views = haetut_tiedot.get(v["id"], 0)
-                        v_usd = (v_views / 1000) * cpm_rate
-                        title = v["title"]
-                        if len(title) > 35:
-                            title = title[:32] + "..."
-                        
-                        st.text(f"• {title} ({v['date']})")
-                        st.caption(f"  👁️ {v_views:,} näyttöä | 💵 ${v_usd:.2f}")
+                    # Näytetään videot siistissä expanderissa (laajennettavassa laatikossa), jotta sivu pysyy siistinä
+                    with st.expander(f"Näytä videot ({nimi})"):
+                        for v in video_list:
+                            v_views = haetut_tiedot.get(v["id"], 0)
+                            v_usd = (v_views / 1000) * cpm_rate
+                            title = v["title"]
+                            st.markdown(f"**{title}**")
+                            st.caption(f"📅 {v['date']} | 👁️ {v_views:,} näyttöä | 💵 ${v_usd:.2f}")
+                            st.markdown("---")
                 else:
-                    st.info(f"Ei videoita valitun päivämäärän ({valittu_alkupaiva}) jälkeen.")
+                    st.info(f"Ei videoita valitun päivämäärän jälkeen.")
                     
             else:
                 st.error(f"Kanavaa ei löytynyt ID:llä: {channel_id}")
@@ -140,4 +169,4 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
             st.error(f"Virhe haussa: {e}")
 
 st.markdown("---")
-st.caption(f"💡 Laskelmat perustuvat arvoon **${cpm_rate} / 1000 näyttökertaa**.")
+st.caption(f"💡 Laskelmat perustuvat arvoon **${cpm_rate} / 1000 näyttökertaa** ja valuuttakurssiin **{eur_rate} EUR/USD**.")
