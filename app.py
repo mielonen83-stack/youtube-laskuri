@@ -7,6 +7,25 @@ import pandas as pd
 # Sivuston ulkoasu
 st.set_page_config(page_title="YouTube Tulolaskuri Pro", page_icon="💰", layout="wide")
 
+# --- SALASANASUOJAUS ---
+st.sidebar.header("🔐 Kirjaudu sisään")
+syotetty_tunnus = st.sidebar.text_input("Käyttäjätunnus")
+syotetty_salasana = st.sidebar.text_input("Salasana", type="password")
+
+# Haetaan oikeat tunnukset secretsistä (tai määritellään varalle oletukset)
+try:
+    oikea_tunnus = st.secrets["salasana"]["kayttaja"]
+    oikea_salasana = st.secrets["salasana"]["salasana"]
+except Exception:
+    oikea_tunnus = "admin"
+    oikea_salasana = "salasana123"
+
+if syotetty_tunnus != oikea_tunnus or syotetty_salasana != oikea_salasana:
+    st.title("💰 YouTube Tulolaskuri & Analytiikka Pro")
+    st.warning("⚠️ Syötä sivupalkkiin oikea käyttäjätunnus ja salasana nähdäksesi kanavien tiedot.")
+    st.stop() # Pysäyttää ohjelman tähän, eikä muuta sivua näytetä ennen kirjautumista
+
+# --- VARSIKAINAINEN SOVELLUS (NÄKYY VAIN KIRJAUTUNEELLE) ---
 st.title("💰 YouTube Tulolaskuri & Analytiikka Pro")
 st.markdown("Seuraa kanaviesi tuottoja, näyttökertoja ja tulevia ennusteita suoraan yhdeltä siistiltä näytöltä.")
 
@@ -37,6 +56,7 @@ if not kanavat:
     }
 
 # --- SIVUPALKKI: Asetukset ja Ajanjakso ---
+st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Asetukset")
 cpm_rate = st.sidebar.slider("Tuotto / 1000 näyttökertaa ($ USD)", min_value=0.5, max_value=10.0, value=1.0, step=0.1)
 eur_rate = st.sidebar.number_input("EUR / USD valuuttakurssi", value=0.92, step=0.01)
@@ -94,7 +114,6 @@ st.markdown("---")
 kaikki_nayttokerrat_yhteensa = 0
 kaikki_videot_data = []
 
-# Korjattu muuttujan nimi (ei saa alkaa numerolla)
 paivia_30_sitten = tanaan - timedelta(days=30)
 ennuste_nayttokerrat_30pv = 0
 
@@ -147,10 +166,8 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                 if vid and v_published_at:
                     try:
                         v_date = datetime.strptime(v_published_at[:10], "%Y-%m-%d").date()
-                        # Valitun aikajakson videot
                         if valittu_alkupaiva <= v_date <= valittu_loppupaiva:
                             raw_videos.append({"id": vid, "title": vtitle, "date": v_date})
-                        # Viimeisen 30 päivän videot ennustetta varten
                         if paivia_30_sitten <= v_date <= tanaan:
                             raw_videos_30pv.append({"id": vid, "title": vtitle, "date": v_date})
                     except Exception:
@@ -169,7 +186,6 @@ for idx, (nimi, channel_id) in enumerate(kanavat.items()):
                     v_views = int(v_item.get("statistics", {}).get("viewCount", 0))
                     haetut_tiedot[v_id] = v_views
 
-            # Lasketaan 30 päivän ennusteen näyttökerrat tälle kanavalle
             for v in raw_videos_30pv:
                 ennuste_nayttokerrat_30pv += haetut_tiedot.get(v["id"], 0)
 
@@ -271,7 +287,6 @@ if kaikki_videot_data:
     nykyiset_tuotot_usd = (kaikki_nayttokerrat_yhteensa / 1000) * cpm_rate
     nykyiset_tuotot_eur = nykyiset_tuotot_usd * eur_rate
     
-    # Kiinteä 30 päivän ennusteen laskenta
     ennuste_tuotot_30pv_usd = (ennuste_nayttokerrat_30pv / 1000) * cpm_rate
     ennuste_tuotot_30pv_eur = ennuste_tuotot_30pv_usd * eur_rate
     
@@ -291,7 +306,6 @@ if kaikki_videot_data:
 
     st.markdown("---")
     
-    # Tavoitteen seuranta
     prosentti = min(int((nykyiset_tuotot_usd / tavoite_usd) * 100), 100)
     
     st.write(f"Asetettu tavoite: **{tavoite_eur:,.2f} €** (${tavoite_usd:,.2f}) | Nykyinen tuotto: **~{nykyiset_tuotot_eur:,.2f} €** (${nykyiset_tuotot_usd:,.2f}) — **{prosentti}% saavutettu**")
