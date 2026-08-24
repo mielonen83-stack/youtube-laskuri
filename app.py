@@ -274,15 +274,15 @@ if kaikki_videot_data:
         kymppi_videot = puuttuu_nayttoja / 10000
         satku_videot = puuttuu_nayttoja / 100000
         
-        # Keskiarvo per video tällä aikajaksolla julkaistuille videoille
+        # Keskiarvo per video valitulla aikajaksolla
         löytyneiden_maara = len(kaikki_videot_data)
         keskiarvo_per_video_eur = (puuttuu_eur / löytyneiden_maara) if löytyneiden_maara > 0 else 0
         keskiarvo_per_video_naytot = int(puuttuu_nayttoja / löytyneiden_maara) if löytyneiden_maara > 0 else 0
 
         st.info(f"💡 Tavoitteesta puuttuu vielä **~{puuttuu_eur:,.2f} €** (${puuttuu_usd:,.2f}), mikä vaatii noin **{puuttuu_nayttoja:,}** uutta näyttökertaa.")
         
-        # Havainnollistavat esimerkit
-        st.markdown("##### 📐 Mitä tämä vaatii käytännössä tällä aikajaksolla?")
+        # Havainnollistavat esimerkit tarkennetulla tekstillä
+        st.markdown(f"##### 📐 Mitä tämä vaatii käytännössä (perustuu valittuun aikajaksoon: {valittu_alkupaiva} – {valittu_loppupaiva})?")
         col_v1, col_v2, col_v3 = st.columns(3)
         col_v1.metric("10k näyttökerran videoita", f"~{kymppi_videot:.1f} kpl")
         col_v2.metric("1k näyttökerran videoita", f"~{tuhat_videot:.1f} kpl")
